@@ -28,5 +28,4 @@ contract UnitTestHelper is Test {
         vm.prank(projectAdmin);
         factory = new SimpleAccountFactory(IEntryPoint(address(entryPoint)));
     }
-
 }

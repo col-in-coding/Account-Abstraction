@@ -10,7 +10,6 @@ import {SimpleAccount} from "../../src/SimpleAccount.sol";
 import {SimpleAccountFactory} from "../../src/SimpleAccountFactory.sol";
 
 contract SimpleAccountIntegrationTest is Test {
-
     EntryPoint public entryPoint;
 
     SimpleAccountFactory public factory;
@@ -73,12 +72,7 @@ contract SimpleAccountIntegrationTest is Test {
 
     function _buildUserOp() internal view returns (PackedUserOperation memory) {
         // 构建一个简单的转账 UserOperation
-        bytes memory callData = abi.encodeWithSignature(
-            "execute(address,uint256,bytes)",
-            alice,
-            1 ether,
-            ""
-        );
+        bytes memory callData = abi.encodeWithSignature("execute(address,uint256,bytes)", alice, 1 ether, "");
 
         return PackedUserOperation({
             sender: address(account),
@@ -128,20 +122,12 @@ contract SimpleAccountIntegrationTest is Test {
     }
 
     // 辅助函数：打包 gas 限制
-    function _packGasLimits(uint128 verificationGasLimit, uint128 callGasLimit)
-        internal
-        pure
-        returns (bytes32)
-    {
+    function _packGasLimits(uint128 verificationGasLimit, uint128 callGasLimit) internal pure returns (bytes32) {
         return bytes32(uint256(verificationGasLimit) << 128 | uint256(callGasLimit));
     }
 
     // 辅助函数：打包 gas 费用
-    function _packGasFees(uint128 maxFeePerGas, uint128 maxPriorityFeePerGas)
-        internal
-        pure
-        returns (bytes32)
-    {
+    function _packGasFees(uint128 maxFeePerGas, uint128 maxPriorityFeePerGas) internal pure returns (bytes32) {
         return bytes32(uint256(maxFeePerGas) << 128 | uint256(maxPriorityFeePerGas));
     }
 }

@@ -5,7 +5,6 @@ import {UnitTestHelper} from "./UnitTestHelper.sol";
 import {SimpleAccount} from "../../src/SimpleAccount.sol";
 
 contract SimpleAccountTest is UnitTestHelper {
-
     function setUp() public override {
         super.setUp();
 
@@ -25,7 +24,7 @@ contract SimpleAccountTest is UnitTestHelper {
 
         // 转入
         vm.prank(owner);
-        (bool success, ) = address(account).call{value: 2 ether}("");
+        (bool success,) = address(account).call{value: 2 ether}("");
         assertTrue(success, "Transfer should succeed");
         assertEq(address(account).balance, accountBalance + 2 ether);
 
@@ -52,5 +51,4 @@ contract SimpleAccountTest is UnitTestHelper {
         vm.expectRevert();
         account.execute(alice, 1 ether, "");
     }
-
 }
