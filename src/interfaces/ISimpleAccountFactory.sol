@@ -7,7 +7,7 @@ pragma solidity ^0.8.28;
  * @dev This interface defines all public functions and events for SimpleAccountFactory
  */
 interface ISimpleAccountFactory {
-    // Custom Errors
+
     error NotSenderCreator(address msgSender, address entity, address senderCreator);
 
     // Core functionality - 保留重要的业务接口
