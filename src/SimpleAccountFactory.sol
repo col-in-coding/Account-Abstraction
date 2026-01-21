@@ -22,9 +22,9 @@ contract SimpleAccountFactory is ISimpleAccountFactory {
         return ACCOUNT_IMPLEMENTATION;
     }
 
-    constructor(IEntryPoint _entryPoint) {
-        ACCOUNT_IMPLEMENTATION = address(new SimpleAccount(_entryPoint));
-        SENDER_CREATOR = address(_entryPoint.senderCreator());
+    constructor(address _entryPoint) {
+        ACCOUNT_IMPLEMENTATION = address(new SimpleAccount(IEntryPoint(_entryPoint)));
+        SENDER_CREATOR = address(IEntryPoint(_entryPoint).senderCreator());
     }
 
     /**

@@ -1,66 +1,72 @@
-## Foundry
+# Abstract Account
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+## 🏗️ Architecture Overview
 
-Foundry consists of:
-
-- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
-- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
-- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
-- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
-
-## Documentation
-
-https://book.getfoundry.sh/
-
-## Usage
-
-### Build
-
-```shell
-$ forge build
+```
+User → UserOperation → Bundler → EntryPoint → Smart Wallet → Execution
 ```
 
-### Test
+## 👥 Key Roles
 
-```shell
-$ forge test
+### **User**
+- **Role**: Owner of Smart Contract Account
+- **Responsibilities**:
+  - Creates and signs UserOperations
+  - Manages wallet permissions and recovery
+  - Can optionally pre-deposit ETH for gas payments
+
+### **Bundler**
+- **Role**: Transaction Packager & MEV Searcher
+- **Responsibilities**:
+  - Receives UserOperations from users/wallets
+  - Validates operations via local simulation
+  - Batches multiple UserOps into efficient bundles
+  - Calls EntryPoint's `handleOps` method
+  - Pays upfront gas costs, receives refunds + fees
+  - Protects against DoS and invalid operations
+
+### **EntryPoint Contract**
+- **Role**: Singleton Universal Execution Gateway
+- **Address**: `0x4337084d9e255ff0702461cf8895ce9e3b5ff108` (cross-chain)
+- **Responsibilities**:
+  - Validates UserOperation authenticity
+  - Enforces security rules and replay protection
+  - Executes user intents through smart wallets
+  - Handles gas accounting and fee distribution
+  - Manages deposit/withdrawal for accounts
+
+### **Paymaster** (Optional)
+- **Role**: Gas Fee Sponsor
+- **Responsibilities**:
+  - Sponsors gas fees for users
+
+## 💰 Payment Methods
+
+### 1. **Self-Paid (User Deposits)**
+```solidity
+// User pre-deposits ETH for gas
+account.addDeposit{value: 1 ether}();
+
+// UserOp without paymaster
+userOp.paymasterAndData = "";
 ```
 
-### Format
+**Flow**: User Deposit → EntryPoint → Gas Deduction
 
-```shell
-$ forge fmt
+### 2. **Sponsored (Paymaster)**
+```solidity
+// Paymaster sponsors the transaction
+userOp.paymasterAndData = abi.encodePacked(
+    paymasterAddress,
+    validUntil,
+    validAfter,
+    signature
+);
 ```
 
-### Gas Snapshots
+**Flow**: Paymaster Deposit → EntryPoint → Sponsored Execution
 
-```shell
-$ forge snapshot
-```
-
-### Anvil
-
-```shell
-$ anvil
-```
-
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+### 3. **Token Payment** (Advanced)
+- Pay gas fees using ERC-20 tokens
+- Automatic token-to-ETH conversion
+- Custom exchange rate logic

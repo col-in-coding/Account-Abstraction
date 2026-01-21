@@ -2,8 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
-import {IEntryPoint} from "@account-abstraction/contracts/interfaces/IEntryPoint.sol";
-import {MockEntryPoint, MockSenderCreator} from "../mocks/MockEntryPoint.sol";
+import {MockEntryPoint} from "../mocks/MockEntryPoint.sol";
 import {SimpleAccount} from "../../src/SimpleAccount.sol";
 import {SimpleAccountFactory} from "../../src/SimpleAccountFactory.sol";
 
@@ -26,6 +25,6 @@ contract UnitTestHelper is Test {
         entryPoint = new MockEntryPoint();
         senderCreatorAddr = address(entryPoint.senderCreator());
         vm.prank(projectAdmin);
-        factory = new SimpleAccountFactory(IEntryPoint(address(entryPoint)));
+        factory = new SimpleAccountFactory(address(entryPoint));
     }
 }

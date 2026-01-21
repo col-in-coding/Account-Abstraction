@@ -13,7 +13,7 @@ contract SimpleAccountTest is UnitTestHelper {
         account = SimpleAccount(payable(factory.createAccount(owner, salt)));
     }
 
-    function testInitialization() public {
+    function testInitialization() public view {
         assertEq(account.owner(), owner);
         assertEq(address(account.entryPoint()), address(entryPoint));
     }
