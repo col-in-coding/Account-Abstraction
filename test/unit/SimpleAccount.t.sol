@@ -8,7 +8,6 @@ contract SimpleAccountTest is UnitTestHelper {
     function setUp() public override {
         super.setUp();
 
-        vm.prank(senderCreatorAddr);
         uint256 salt = 0;
         account = SimpleAccount(payable(factory.createAccount(owner, salt)));
     }

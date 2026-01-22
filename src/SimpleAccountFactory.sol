@@ -15,7 +15,6 @@ import {SimpleAccount} from "./SimpleAccount.sol";
  */
 contract SimpleAccountFactory is ISimpleAccountFactory {
     address private immutable ACCOUNT_IMPLEMENTATION;
-    address private immutable SENDER_CREATOR;
 
     // Getter function to match interface
     function accountImplementation() external view override returns (address) {
@@ -24,7 +23,6 @@ contract SimpleAccountFactory is ISimpleAccountFactory {
 
     constructor(address _entryPoint) {
         ACCOUNT_IMPLEMENTATION = address(new SimpleAccount(IEntryPoint(_entryPoint)));
-        SENDER_CREATOR = address(IEntryPoint(_entryPoint).senderCreator());
     }
 
     /**
@@ -34,7 +32,6 @@ contract SimpleAccountFactory is ISimpleAccountFactory {
      * This method returns an existing account address so that entryPoint.getSenderAddress() would work even after account creation
      */
     function createAccount(address owner, uint256 salt) public returns (address) {
-        require(msg.sender == SENDER_CREATOR, NotSenderCreator(msg.sender, address(this), SENDER_CREATOR));
         address addr = getAddress(owner, salt);
         uint256 codeSize = addr.code.length;
         if (codeSize > 0) {

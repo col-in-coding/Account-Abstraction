@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 import {Test} from "forge-std/Test.sol";
 // import {console} from "forge-std/console.sol";
 import {EntryPoint} from "@account-abstraction/contracts/core/EntryPoint.sol";
-import {PackedUserOperation} from "@account-abstraction/contracts/interfaces/PackedUserOperation.sol";
+import {UserOperation} from "@account-abstraction/contracts/interfaces/UserOperation.sol";
 import {SimpleAccount} from "../../src/SimpleAccount.sol";
 import {SimpleAccountFactory} from "../../src/SimpleAccountFactory.sol";
 import {SimplePaymaster} from "../../src/SimplePaymaster.sol";
@@ -35,7 +35,7 @@ contract SimpleAccountIntegrationTest is Test {
     function setUp() public {
         vm.prank(officialAdmin);
         entryPoint = new EntryPoint();
-        senderCreatorAddr = address(entryPoint.senderCreator());
+        // senderCreatorAddr = address(entryPoint.senderCreator()); // v0.7: not available
 
         (user, userSK) = makeAddrAndKey("user");
         (paymasterSigner, paymasterSignerSK) = makeAddrAndKey("paymaster_signer");
@@ -55,6 +55,7 @@ contract SimpleAccountIntegrationTest is Test {
         // Paymaster 设置签名者和启用签名验证
         paymaster.setVerifyingSigner(paymasterSigner);
         paymaster.setSignatureRequired(true);
+        paymaster.setMaxGasCostPerOp(0.01 ether); // 增加 gas 限制
         vm.stopPrank();
     }
 
@@ -68,7 +69,7 @@ contract SimpleAccountIntegrationTest is Test {
         entryPoint.depositTo{value: 5 ether}(predictedAccountAddr);
 
         // 3. 构建 UserOperation
-        PackedUserOperation memory userOp = _buildUserOp();
+        UserOperation memory userOp = _buildUserOp();
         bytes memory initCode =
             abi.encodePacked(address(factory), abi.encodeCall(SimpleAccountFactory.createAccount, (user, salt)));
         userOp.initCode = initCode;
@@ -94,8 +95,8 @@ contract SimpleAccountIntegrationTest is Test {
         uint256 initBalance = address(account).balance;
 
         // 3. 构建一个简单的转账 UserOperation
-        PackedUserOperation memory userOp = _buildUserOp();
-        uint256 nonce = entryPoint.getNonce(address(account), 0);
+        UserOperation memory userOp = _buildUserOp();
+        uint256 nonce = account.nonce();
         userOp.nonce = nonce;
         uint256 transferAmount = 1 ether;
         bytes memory callData = abi.encodeWithSignature("execute(address,uint256,bytes)", alice, transferAmount, "");
@@ -128,15 +129,24 @@ contract SimpleAccountIntegrationTest is Test {
         uint256 initBalance = address(account).balance;
 
         // 3. 构建一个批量转账 UserOperation
-        PackedUserOperation memory userOp = _buildUserOp();
-        uint256 nonce = entryPoint.getNonce(address(account), 0);
+        UserOperation memory userOp = _buildUserOp();
+        uint256 nonce = account.nonce();
         userOp.nonce = nonce;
 
         // 构建批量调用数据
-        Call[] memory calls = new Call[](2);
-        calls[0] = Call({target: alice, value: 1 ether, data: ""});
-        calls[1] = Call({target: bob, value: 2 ether, data: ""});
-        userOp.callData = abi.encodeWithSignature("executeBatch((address,uint256,bytes)[])", calls);
+        address[] memory targets = new address[](2);
+        targets[0] = alice;
+        targets[1] = bob;
+
+        uint256[] memory values = new uint256[](2);
+        values[0] = 1 ether;
+        values[1] = 2 ether;
+
+        bytes[] memory datas = new bytes[](2);
+        datas[0] = "";
+        datas[1] = "";
+
+        userOp.callData = abi.encodeWithSignature("executeBatch(address[],uint256[],bytes[])", targets, values, datas);
 
         // 4. 签名 UserOperation
         userOp = _signUserOp(userOp);
@@ -156,8 +166,8 @@ contract SimpleAccountIntegrationTest is Test {
         _createUserAccount();
 
         // 2. 构建一个 UserOperation，但使用陌生人的签名
-        PackedUserOperation memory userOp = _buildUserOp();
-        uint256 nonce = entryPoint.getNonce(address(account), 0);
+        UserOperation memory userOp = _buildUserOp();
+        uint256 nonce = account.nonce();
         userOp.nonce = nonce;
         uint256 transferAmount = 1 ether;
         bytes memory callData = abi.encodeWithSignature("execute(address,uint256,bytes)", bob, transferAmount, "");
@@ -168,7 +178,7 @@ contract SimpleAccountIntegrationTest is Test {
         userOp.signature = abi.encodePacked(r, s, v);
 
         // 3. 模拟 Bundler 提交 UserOperation，预期应当 revert
-        PackedUserOperation[] memory ops = new PackedUserOperation[](1);
+        UserOperation[] memory ops = new UserOperation[](1);
         ops[0] = userOp;
 
         vm.startPrank(bundler, bundler);
@@ -182,20 +192,18 @@ contract SimpleAccountIntegrationTest is Test {
         _createUserAccount();
 
         // 2. 构造UserOperation，使用 SimplePaymaster 作为 paymaster
-        PackedUserOperation memory userOp = _buildUserOp();
-        uint256 nonce = entryPoint.getNonce(address(account), 0);
+        UserOperation memory userOp = _buildUserOp();
+        uint256 nonce = account.nonce();
         userOp.nonce = nonce;
         uint256 transferAmount = 1 ether;
         bytes memory callData = abi.encodeWithSignature("execute(address,uint256,bytes)", alice, transferAmount, "");
         userOp.callData = callData;
 
-        // Format: paymaster(20) || verificationGasLimit(16) || postOpGasLimit(16) || paymasterData
+        // v0.7 Format: paymaster(20) || paymasterData (no gas limits)
         bytes memory paymasterData = _paymasterSignatureData(nonce);
         bytes memory paymasterAndData = abi.encodePacked(
             address(paymaster), // 20 bytes: paymaster address
-            uint128(300000), // 16 bytes: verificationGasLimit for paymaster
-            uint128(50000), // 16 bytes: postOpGasLimit
-            paymasterData
+            paymasterData // paymasterData (no gas limits in v0.7)
         );
         userOp.paymasterAndData = paymasterAndData;
 
@@ -246,30 +254,32 @@ contract SimpleAccountIntegrationTest is Test {
         vm.deal(address(account), 10 ether);
     }
 
-    function _buildUserOp() internal view returns (PackedUserOperation memory) {
-        return PackedUserOperation({
+    function _buildUserOp() internal view returns (UserOperation memory) {
+        return UserOperation({
             sender: address(account),
             nonce: 0,
             initCode: "",
             callData: "",
-            accountGasLimits: _packGasLimits(200000, 100000), // verificationGasLimit, callGasLimit
+            callGasLimit: 100000,
+            verificationGasLimit: 200000,
             preVerificationGas: 50000,
-            gasFees: _packGasFees(2e9, 1e9), // maxFeePerGas, maxPriorityFeePerGas
+            maxFeePerGas: 2e9,
+            maxPriorityFeePerGas: 1e9,
             paymasterAndData: "",
-            signature: "" // 稍后填充
+            signature: ""
         });
     }
 
-    function _signUserOp(PackedUserOperation memory userOp) internal view returns (PackedUserOperation memory) {
+    function _signUserOp(UserOperation memory userOp) internal view returns (UserOperation memory) {
         bytes32 userOpHash = entryPoint.getUserOpHash(userOp);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(userSK, userOpHash);
         userOp.signature = abi.encodePacked(r, s, v);
         return userOp;
     }
 
-    function _simulateBundlerSubmission(PackedUserOperation memory userOp) internal {
+    function _simulateBundlerSubmission(UserOperation memory userOp) internal {
         // 模拟 Bundler 调用 EntryPoint
-        PackedUserOperation[] memory ops = new PackedUserOperation[](1);
+        UserOperation[] memory ops = new UserOperation[](1);
         ops[0] = userOp;
 
         // uint256 bundlerBalanceBefore = bundler.balance;

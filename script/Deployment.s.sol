@@ -8,8 +8,8 @@ import {SimpleAccountFactory} from "../src/SimpleAccountFactory.sol";
 import {SimplePaymaster} from "../src/SimplePaymaster.sol";
 
 contract Deployment is Script {
-    // Sepolia EntryPoint v0.7 地址 (兼容 PackedUserOperation)
-    address constant ENTRY_POINT = 0x433709009B8330FDa32311DF1C2AFA402eD8D009;
+    // Sepolia EntryPoint v0.7 地址
+    address constant ENTRY_POINT = 0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789;
 
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
@@ -24,10 +24,10 @@ contract Deployment is Script {
         SimplePaymaster paymaster = new SimplePaymaster(ENTRY_POINT);
         console.log("SimplePaymaster deployed at:", address(paymaster));
 
-        // 给 paymaster 质押和充值
-        paymaster.addStake{value: 0.1 ether}(1 days);
-        paymaster.deposit{value: 0.5 ether}();
-        console.log("Paymaster staked and deposited");
+        // // 给 paymaster 质押和充值
+        // paymaster.addStake{value: 0.1 ether}(1 days);
+        // paymaster.deposit{value: 0.5 ether}();
+        // console.log("Paymaster staked and deposited");
 
         vm.stopBroadcast();
 

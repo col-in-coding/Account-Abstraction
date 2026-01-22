@@ -11,8 +11,6 @@ contract UnitTestHelper is Test {
     SimpleAccountFactory public factory;
     SimpleAccount public account;
 
-    address public senderCreatorAddr;
-
     address public officialAdmin = makeAddr("official_admin");
     address public projectAdmin = makeAddr("project_admin");
     address public owner = makeAddr("owner");
@@ -23,7 +21,6 @@ contract UnitTestHelper is Test {
     function setUp() public virtual {
         vm.prank(officialAdmin);
         entryPoint = new MockEntryPoint();
-        senderCreatorAddr = address(entryPoint.senderCreator());
         vm.prank(projectAdmin);
         factory = new SimpleAccountFactory(address(entryPoint));
     }
