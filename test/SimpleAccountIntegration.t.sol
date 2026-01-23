@@ -21,11 +21,11 @@ contract SimpleAccountIntegrationTest is Test {
     address public officialAdmin = makeAddr("official_admin");
     address public projectAdmin = makeAddr("project_admin");
     address public paymasterSigner;
-    uint256 public paymasterSignerSK;
+    uint256 public paymasterSignerPrivateKey;
 
     address public bundler = makeAddr("bundler");
     address public user;
-    uint256 public userSK;
+    uint256 public userPrivateKey;
     uint256 public salt = 0;
 
     address public stranger = makeAddr("stranger");
@@ -37,8 +37,8 @@ contract SimpleAccountIntegrationTest is Test {
         entryPoint = new EntryPoint();
         // senderCreatorAddr = address(entryPoint.senderCreator()); // v0.7: not available
 
-        (user, userSK) = makeAddrAndKey("user");
-        (paymasterSigner, paymasterSignerSK) = makeAddrAndKey("paymaster_signer");
+        (user, userPrivateKey) = makeAddrAndKey("user");
+        (paymasterSigner, paymasterSignerPrivateKey) = makeAddrAndKey("paymaster_signer");
 
         vm.deal(projectAdmin, 20 ether); // 给 projectAdmin 充值，用于调用 addStake 和 deposit
         vm.deal(bundler, 100 ether); // 给 bundler 一些 ETH 用于支付交易费用
@@ -112,12 +112,6 @@ contract SimpleAccountIntegrationTest is Test {
         assertEq(alice.balance, transferAmount, "Alice should have received 1 ether");
         assertTrue(address(account).balance < initBalance, "Account balance should decrease");
         assertTrue(bundler.balance > 100 ether, "Bundler should earn fees");
-    }
-
-    struct Call {
-        address target;
-        uint256 value;
-        bytes data;
     }
 
     function testBatchTransferETH() public {
@@ -241,7 +235,7 @@ contract SimpleAccountIntegrationTest is Test {
 
         bytes32 ethSignedMessageHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", dataHash));
 
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(paymasterSignerSK, ethSignedMessageHash);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(paymasterSignerPrivateKey, ethSignedMessageHash);
         bytes memory signature = abi.encodePacked(r, s, v);
         paymasterData = abi.encodePacked(payload, signature);
     }
@@ -272,7 +266,7 @@ contract SimpleAccountIntegrationTest is Test {
 
     function _signUserOp(UserOperation memory userOp) internal view returns (UserOperation memory) {
         bytes32 userOpHash = entryPoint.getUserOpHash(userOp);
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(userSK, userOpHash);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(userPrivateKey, userOpHash);
         userOp.signature = abi.encodePacked(r, s, v);
         return userOp;
     }

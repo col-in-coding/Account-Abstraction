@@ -3,12 +3,11 @@ pragma solidity ^0.8.28;
 
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
-import {EntryPoint} from "@account-abstraction/contracts/core/EntryPoint.sol";
 import {SimpleAccountFactory} from "../src/SimpleAccountFactory.sol";
 import {SimplePaymaster} from "../src/SimplePaymaster.sol";
 
 contract Deployment is Script {
-    // Sepolia EntryPoint v0.7 地址
+    // Sepolia EntryPoint v0.6 地址
     address constant ENTRY_POINT = 0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789;
 
     function run() external {

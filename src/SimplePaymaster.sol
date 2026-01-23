@@ -154,7 +154,14 @@ contract SimplePaymaster is Ownable, BasePaymaster {
             )
         );
 
-        bytes32 ethSignedMessageHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", dataHash));
+        // 使用内联汇编优化 EIP-191 签名哈希
+        bytes32 ethSignedMessageHash;
+        assembly {
+            // 在内存中构造: "\x19Ethereum Signed Message:\n32" + dataHash
+            mstore(0x00, "\x19Ethereum Signed Message:\n32") // 前缀 (28 bytes)
+            mstore(0x1c, dataHash) // dataHash (32 bytes，从偏移28开始)
+            ethSignedMessageHash := keccak256(0x00, 0x3c) // 总共60字节 (0x3c = 60)
+        }
 
         // 验证签名
         address recoveredSigner = ethSignedMessageHash.recover(signature);
