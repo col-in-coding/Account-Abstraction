@@ -1,0 +1,17 @@
+{
+  "name": "my-bundler",
+  "version": "1.0.0",
+  "description": "start my own bundler",
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "npx tsx index.ts"
+  },
+  "dependencies": {
+    "@etherspot/free-bundler": "^1.0.5",
+    "dotenv": "^17.2.3",
+    "viem": "^2.44.4"
+  }
+}
