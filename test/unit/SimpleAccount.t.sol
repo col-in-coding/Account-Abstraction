@@ -2,12 +2,13 @@
 pragma solidity ^0.8.28;
 
 import {UnitTestHelper} from "./UnitTestHelper.sol";
-import {SimpleAccount} from "../../src/SimpleAccount.sol";
+import {SimpleAccount} from "src/SimpleAccount.sol";
 
 contract SimpleAccountTest is UnitTestHelper {
     function setUp() public override {
         super.setUp();
 
+        vm.prank(senderCreatorAddr);
         uint256 salt = 0;
         account = SimpleAccount(payable(factory.createAccount(owner, salt)));
     }
