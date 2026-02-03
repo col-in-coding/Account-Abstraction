@@ -6,9 +6,7 @@ import {BaseAccount} from "lib/account-abstraction/contracts/core/BaseAccount.so
 import {Simple7702Account} from "src/Simple7702Account.sol";
 import {UnitTestHelper} from "./UnitTestHelper.sol";
 
-
 contract Simple7702AccountTest is UnitTestHelper {
-
     Simple7702Account public eip7702delegate;
 
     function setUp() public virtual override {

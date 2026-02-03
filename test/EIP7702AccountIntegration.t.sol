@@ -145,7 +145,9 @@ contract EIP7702AccountTest is Test {
         assertEq(nonce, 1, "Nonce should increment after operation");
 
         uint256 entryPointBalance = entryPoint.balanceOf(user);
-        assertEq(entryPointBalance, initEntryPointBalance, "EntryPoint balance should remain the same as Paymaster pays gas");
+        assertEq(
+            entryPointBalance, initEntryPointBalance, "EntryPoint balance should remain the same as Paymaster pays gas"
+        );
     }
 
     function _buildUserOp() internal view returns (PackedUserOperation memory) {

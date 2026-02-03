@@ -14,7 +14,6 @@ import "@account-abstraction/contracts/core/BaseAccount.sol";
  * A minimal account to be used with EIP-7702 (for batching) and ERC-4337 (for gas sponsoring)
  */
 contract Simple7702Account is BaseAccount, IERC165, IERC1271, ERC1155Holder, ERC721Holder {
-
     IEntryPoint private immutable _entryPoint;
 
     error NotFromEntryPoint(address sender, address thisAddress, address entryPointAddress);
@@ -31,15 +30,16 @@ contract Simple7702Account is BaseAccount, IERC165, IERC1271, ERC1155Holder, ERC
      * Make this account callable through ERC-4337 EntryPoint.
      * The UserOperation should be signed by this account's private key.
      */
-    function _validateSignature(
-        PackedUserOperation calldata userOp,
-        bytes32 userOpHash
-    ) internal virtual override returns (uint256 validationData) {
-
+    function _validateSignature(PackedUserOperation calldata userOp, bytes32 userOpHash)
+        internal
+        virtual
+        override
+        returns (uint256 validationData)
+    {
         return _checkSignature(userOpHash, userOp.signature) ? SIG_VALIDATION_SUCCESS : SIG_VALIDATION_FAILED;
     }
 
-    function isValidSignature(bytes32 hash, bytes memory signature) public virtual view returns (bytes4 magicValue) {
+    function isValidSignature(bytes32 hash, bytes memory signature) public view virtual returns (bytes4 magicValue) {
         return _checkSignature(hash, signature) ? this.isValidSignature.selector : bytes4(0xffffffff);
     }
 
@@ -49,29 +49,18 @@ contract Simple7702Account is BaseAccount, IERC165, IERC1271, ERC1155Holder, ERC
 
     function _requireForExecute() internal view virtual override {
         require(
-            msg.sender == address(this) ||
-            msg.sender == address(entryPoint()),
-            NotFromEntryPoint(
-                msg.sender,
-                address(this),
-                address(entryPoint())
-            )
+            msg.sender == address(this) || msg.sender == address(entryPoint()),
+            NotFromEntryPoint(msg.sender, address(this), address(entryPoint()))
         );
     }
 
-    function supportsInterface(bytes4 id) public virtual override(ERC1155Holder, IERC165) pure returns (bool) {
-        return
-            id == type(IERC165).interfaceId ||
-            id == type(IAccount).interfaceId ||
-            id == type(IERC1271).interfaceId ||
-            id == type(IERC1155Receiver).interfaceId ||
-            id == type(IERC721Receiver).interfaceId;
+    function supportsInterface(bytes4 id) public pure virtual override(ERC1155Holder, IERC165) returns (bool) {
+        return id == type(IERC165).interfaceId || id == type(IAccount).interfaceId || id == type(IERC1271).interfaceId
+            || id == type(IERC1155Receiver).interfaceId || id == type(IERC721Receiver).interfaceId;
     }
 
     // accept incoming calls (with or without value), to mimic an EOA.
-    fallback() external payable {
-    }
+    fallback() external payable {}
 
-    receive() external payable {
-    }
+    receive() external payable {}
 }

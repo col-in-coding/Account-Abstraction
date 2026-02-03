@@ -1,74 +1,77 @@
+/**
+ * Main entry point - EIP-7702 Smart Account Transaction Flow
+ *
+ * This script demonstrates:
+ * 1. Account initialization
+ * 2. Authorization signing (if needed)
+ * 3. UserOperation preparation, signing, and sending
+ */
+
 import { env } from './config'
 import { sepoliaClientV08 } from './client'
-import { prepareUserOperation } from 'viem/account-abstraction'
-import { toSimple7702SmartAccount, sendUserOperation} from 'viem/account-abstraction'
-import { privateKeyToAccount } from 'viem/accounts'
-import { parseUnits, SignAuthorizationReturnType } from 'viem'
+import { initializeAccounts, createSmartAccount } from './modules/account'
+import { checkAndSignAuthorization } from './modules/authorization'
+import { executeUserOperation } from './modules/userOperation'
+import { CONTRACTS, DEFAULT_USER_OP_CONFIG } from './modules/constants'
 
-// const owner = privateKeyToAccount(env.PRIVATE_KEY)
-const owner = privateKeyToAccount(env.PAYMASTER_PRIVATE_KEY)
-const recipient = privateKeyToAccount(env.USER_PRIVATE_KEY)
+async function main() {
+    try {
+        console.log('=== EIP-7702 Smart Account Transaction Flow ===\n')
 
-// Simple7702SmartAccount Implementation
-const eip7702delegate = "0xCeEe3852dde1bB6FdF0bB2d1402A6f6B84Ab49d2"
-// EntryPoint V0.8
-const entryPointAddr = "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108"
+        // Step 1: Initialize accounts
+        console.log('📝 Step 1: Initializing accounts...')
+        const { owner, recipient } = initializeAccounts({
+            ownerPrivateKey: env.PRIVATE_KEY,
+            recipientPrivateKey: env.USER_PRIVATE_KEY,
+            eip7702DelegateAddress: CONTRACTS.EIP7702_DELEGATE,
+            entryPointAddress: CONTRACTS.ENTRY_POINT_V08,
+        })
+        console.log('✓ Accounts initialized\n')
 
-const smartAccount = await toSimple7702SmartAccount({
-    implementation: eip7702delegate,
-    client: sepoliaClientV08,
-    owner,
-})
-console.log("Owner address:", owner.address)
-console.log("Recipient address:", recipient.address)
+        // Step 2: Create smart account
+        console.log('🏗️  Step 2: Creating EIP-7702 smart account...')
+        const smartAccount = await createSmartAccount(
+            sepoliaClientV08,
+            owner,
+            CONTRACTS.EIP7702_DELEGATE,
+            CONTRACTS.ENTRY_POINT_V08
+        )
+        console.log('✓ Smart account created\n')
 
-// overriding for ep9 address
-smartAccount.entryPoint.address = entryPointAddr
-console.log("wallet:: ", smartAccount.address)
+        // Step 3: Check and sign authorization
+        console.log('🔐 Step 3: Checking EIP-7702 authorization...')
+        const authResult = await checkAndSignAuthorization(
+            sepoliaClientV08,
+            smartAccount.address,
+            smartAccount.authorization.address,
+            smartAccount.authorization
+        )
+        console.log(
+            authResult.needsSignature
+                ? '✓ Authorization signed\n'
+                : '✓ No authorization needed\n'
+        )
 
-// check sender's code to decide if eip7702Auth tuple is necessary for userOp.
-const senderCode = await sepoliaClientV08.getCode({
-    address: smartAccount.address
-})
-console.log("Sender code: ", senderCode)
+        // Step 4: Execute UserOperation
+        console.log('💳 Step 4: Executing UserOperation...')
+        const userOpHash = await executeUserOperation(
+            sepoliaClientV08,
+            {
+                recipient: recipient.address,
+                amount: DEFAULT_USER_OP_CONFIG.amount,
+                verificationGasLimit: DEFAULT_USER_OP_CONFIG.verificationGasLimit,
+            },
+            smartAccount,
+            authResult.authorization
+        )
+        console.log('✓ UserOperation executed\n')
 
-let authorization: SignAuthorizationReturnType | undefined
-const { address: delegateAddress } = smartAccount.authorization
-console.log("Delegate address:", delegateAddress)
-console.log("Authorization params:", smartAccount.authorization)
-
-if(senderCode !== `0xef0100${delegateAddress.toLowerCase().substring(2)}`) {
-    console.log("Signing authorization...")
-    authorization = await sepoliaClientV08.signAuthorization(smartAccount.authorization)
-    // console.log("Authorization signature:", authorization)
+        console.log('=== Transaction Completed Successfully ===')
+        console.log(`UserOp Hash: ${userOpHash}`)
+    } catch (error) {
+        console.error('❌ Error:', error)
+        process.exit(1)
+    }
 }
 
-// const userOpHash = await sendUserOperation(sepoliaClientV08, {
-//     account: smartAccount,
-//     authorization,
-//     calls: [
-//         {
-//             to: recipient.address,
-//             value: parseUnits('0.0000001', 18)
-//         }
-//     ],
-//     verificationGasLimit: 150000n
-// })
-
-// console.log('userOpHash:: ', userOpHash)
-
-const prepared = await prepareUserOperation(sepoliaClientV08, {
-    account: smartAccount,
-    authorization,
-    calls: [
-        {
-            to: recipient.address,
-            value: parseUnits('0.0000001', 18)
-        }
-    ],
-    verificationGasLimit: 150000n
-})
-
-console.log('Prepared UserOperation: ', prepared)
-// const userOpHash = await sendUserOperation(sepoliaClientV08, prepared)
-// console.log('userOpHash:: ', userOpHash)
+main()

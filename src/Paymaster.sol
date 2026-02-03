@@ -189,6 +189,5 @@ contract Paymaster is BasePaymaster {
         } else if (mode == PostOpMode.opReverted) {
             emit UserOperationFailed(user, actualGasCost);
         }
-
     }
 }

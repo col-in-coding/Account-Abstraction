@@ -31,34 +31,33 @@ contract SimpleAccountFactory {
      * This method returns an existing account address so that entryPoint.getSenderAddress() would work even after account creation
      */
     function createAccount(address owner, uint256 salt) public returns (SimpleAccount ret) {
-        require(msg.sender == address(senderCreator),
-            NotSenderCreator(
-                msg.sender,
-                address(this),
-                address(senderCreator)
-            )
+        require(
+            msg.sender == address(senderCreator), NotSenderCreator(msg.sender, address(this), address(senderCreator))
         );
         address addr = getAddress(owner, salt);
         uint256 codeSize = addr.code.length;
         if (codeSize > 0) {
             return SimpleAccount(payable(addr));
         }
-        ret = SimpleAccount(payable(new ERC1967Proxy{salt : bytes32(salt)}(
-                address(accountImplementation),
-                abi.encodeCall(SimpleAccount.initialize, (owner))
-            )));
+        ret = SimpleAccount(
+            payable(new ERC1967Proxy{salt: bytes32(salt)}(
+                    address(accountImplementation), abi.encodeCall(SimpleAccount.initialize, (owner))
+                ))
+        );
     }
 
     /**
      * calculate the counterfactual address of this account as it would be returned by createAccount()
      */
-    function getAddress(address owner,uint256 salt) public virtual view returns (address) {
-        return Create2.computeAddress(bytes32(salt), keccak256(abi.encodePacked(
-                type(ERC1967Proxy).creationCode,
-                abi.encode(
-                    address(accountImplementation),
-                    abi.encodeCall(SimpleAccount.initialize, (owner))
+    function getAddress(address owner, uint256 salt) public view virtual returns (address) {
+        return Create2.computeAddress(
+            bytes32(salt),
+            keccak256(
+                abi.encodePacked(
+                    type(ERC1967Proxy).creationCode,
+                    abi.encode(address(accountImplementation), abi.encodeCall(SimpleAccount.initialize, (owner)))
                 )
-            )));
+            )
+        );
     }
 }
