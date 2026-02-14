@@ -46,7 +46,7 @@ export async function createSmartAccount(
         owner,
     })
 
-    // Override EntryPoint address
+    // Override EntryPoint V0.8 address
     smartAccount.entryPoint.address = entryPointAddress as `0x${string}`
 
     console.log('Smart account address:', smartAccount.address)

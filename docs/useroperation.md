@@ -9,8 +9,12 @@ Sender is a Smart Account Address
 
 ### nonce
 
-Nonce is centralized and managed by the EntryPoint
-`entryPoint.getNonce(address(account), 0)`
+Nonce is centralized and managed by the EntryPoint, and it's a key-based nonce system.
+
+```
+sequence = entryPoint.getNonce(address(account), key)
+nonce = (key << 64) | sequence
+```
 
 ### initCode
 

@@ -1,23 +1,11 @@
-/**
- * Main entry point - EIP-7702 Smart Account Transaction Flow
- *
- * This script demonstrates:
- * 1. Account initialization
- * 2. Authorization signing (if needed)
- * 3. UserOperation preparation, signing, and sending
- */
-
-import { env } from './config'
-import { sepoliaClientV08 } from './client'
+import { sepoliaClientV08 } from './modules/client'
 import { initializeAccounts, createSmartAccount } from './modules/account'
 import { checkAndSignAuthorization } from './modules/authorization'
 import { executeUserOperation } from './modules/userOperation'
-import { CONTRACTS, DEFAULT_USER_OP_CONFIG } from './modules/constants'
+import { CONTRACTS, DEFAULT_USER_OP_CONFIG, env } from './modules/constants'
 
 async function main() {
     try {
-        console.log('=== EIP-7702 Smart Account Transaction Flow ===\n')
-
         // Step 1: Initialize accounts
         console.log('📝 Step 1: Initializing accounts...')
         const { owner, recipient } = initializeAccounts({
@@ -26,7 +14,6 @@ async function main() {
             eip7702DelegateAddress: CONTRACTS.EIP7702_DELEGATE,
             entryPointAddress: CONTRACTS.ENTRY_POINT_V08,
         })
-        console.log('✓ Accounts initialized\n')
 
         // Step 2: Create smart account
         console.log('🏗️  Step 2: Creating EIP-7702 smart account...')
@@ -36,7 +23,6 @@ async function main() {
             CONTRACTS.EIP7702_DELEGATE,
             CONTRACTS.ENTRY_POINT_V08
         )
-        console.log('✓ Smart account created\n')
 
         // Step 3: Check and sign authorization
         console.log('🔐 Step 3: Checking EIP-7702 authorization...')
@@ -46,14 +32,9 @@ async function main() {
             smartAccount.authorization.address,
             smartAccount.authorization
         )
-        console.log(
-            authResult.needsSignature
-                ? '✓ Authorization signed\n'
-                : '✓ No authorization needed\n'
-        )
 
-        // Step 4: Execute UserOperation
-        console.log('💳 Step 4: Executing UserOperation...')
+        // Step 4: prepare UserOperation
+        console.log('💳 Step 4: Preparing UserOperation...')
         const userOpHash = await executeUserOperation(
             sepoliaClientV08,
             {
@@ -64,7 +45,6 @@ async function main() {
             smartAccount,
             authResult.authorization
         )
-        console.log('✓ UserOperation executed\n')
 
         console.log('=== Transaction Completed Successfully ===')
         console.log(`UserOp Hash: ${userOpHash}`)

@@ -1,7 +1,8 @@
 import { createFreeBundler, getFreeBundlerUrl, getSupportedChainIds} from '@etherspot/free-bundler'
 import {publicActions, walletActions, createPublicClient, http } from 'viem'
 import { sepolia } from 'viem/chains'
-import { env } from './config'
+import { BUNDLER_URL } from './constants'
+
 const chain = sepolia
 
 // // etherspot free bundler info
@@ -13,14 +14,13 @@ export const sepoliaClientV09 = createFreeBundler({chain})
                                 .extend(publicActions)
                                 .extend(walletActions)
 
-const bundlerUrl = 'https://testnet-rpc.etherspot.io/v3/11155111?api-key=' + env.ETHERSPOT_API_KEY;
 export const sepoliaClientV08 = createPublicClient({
   chain: sepolia,
-  transport: http(bundlerUrl),
+  transport: http(BUNDLER_URL),
 }).extend(publicActions).extend(walletActions);
 
-const entryPoints = await sepoliaClientV08.request({
-  method: 'eth_supportedEntryPoints',
-  params: [],
-});
-console.log("Supported Entry Points: ", entryPoints);
+// const entryPoints = await sepoliaClientV08.request({
+//   method: 'eth_supportedEntryPoints',
+//   params: [],
+// });
+// console.log("Supported Entry Points: ", entryPoints);

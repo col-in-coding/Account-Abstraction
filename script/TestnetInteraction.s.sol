@@ -23,7 +23,7 @@ contract TestnetInteraction is Script {
     // Sepolia 测试网已部署的合约地址
     address constant ENTRY_POINT = 0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108;
     address constant FACTORY = 0xD03fc9CA948ED3c8eD74809660269dF44149ba3B;
-    address constant PAYMASTER = 0x68d4b6784f1143b91D2907071ec2C5279b44b7f0;
+    address constant PAYMASTER = 0x9B7CD9ad5D5B314199dD17d0854d0f8002c46314;
     address constant EIP7702_DELEGATE = 0xCeEe3852dde1bB6FdF0bB2d1402A6f6B84Ab49d2;
 
     address ownerEOA;
@@ -83,6 +83,8 @@ contract TestnetInteraction is Script {
             console.log("EIP7702 Delegate Address: ", address(simple7702account));
             // console.log("EIP7702 Delegate Owner: ", simple7702account.owner());
             console.log("EIP7702 Delegate EntryPoint: ", address(simple7702account.entryPoint()));
+            console.log("EntryPoint Deposit for EOA: ", entryPoint.balanceOf(ownerEOA));
+            console.log("EIP7702 Delegate Nonce: ", entryPoint.getNonce(ownerEOA, 0));
         }
 
         // Paymaster 信息
@@ -96,22 +98,41 @@ contract TestnetInteraction is Script {
         console.log("Sponsorship Enabled: ", paymaster.sponsorshipEnabled());
         console.log("Signature Required: ", paymaster.signatureRequired());
         console.log("Verifying Signer: ", paymaster.verifyingSigner());
+        console.log("Paymaster Staked: ", entryPoint.getDepositInfo(address(paymaster)).staked);
+        console.log("Paymaster Stake: ", entryPoint.getDepositInfo(address(paymaster)).stake);
+        console.log("Paymaster Deposit: ", entryPoint.getDepositInfo(address(paymaster)).deposit);
     }
 
     /**
      * @notice 添加存款到EntryPoint账户
-     * @dev forge script script/TestnetInteraction.s.sol:TestnetInteraction --sig "addDepositeToEntryPoint()" --rpc-url sepolia --broadcast
+     * @dev forge script script/TestnetInteraction.s.sol:TestnetInteraction --sig "simpleAccountAddDepositToEntryPoint()" --rpc-url sepolia --broadcast
      */
-    function addDepositeToEntryPoint() public {
+    function simpleAccountAddDepositToEntryPoint() public {
         uint256 userPrivateKey = vm.envUint("PRIVATE_KEY");
         if (simpleAccountAddress.code.length == 0) {
             console.log("Account does not exist!");
         }
 
         vm.startBroadcast(userPrivateKey);
-        entryPoint.depositTo{value: 0.1 ether}(simpleAccountAddress);
+        entryPoint.depositTo{value: 1 ether}(simpleAccountAddress);
         vm.stopBroadcast();
         uint256 currentDeposit = entryPoint.balanceOf(simpleAccountAddress);
+        console.log("Current Deposit for Account:", currentDeposit);
+    }
+
+    /**
+     * @notice 添加存款到EntryPoint账户（EIP-7702 Delegate）
+     * @dev forge script script/TestnetInteraction.s.sol:TestnetInteraction --sig "simple7702AddDepositToEntryPoint()" --rpc-url sepolia --broadcast
+     */
+    function simple7702AddDepositToEntryPoint() public {
+        uint256 userPrivateKey = vm.envUint("PRIVATE_KEY");
+        if (address(simple7702account).code.length == 0) {
+            console.log("EIP-7702 Delegate is not attached yet.");
+        }
+        vm.startBroadcast(userPrivateKey);
+        entryPoint.depositTo{value: 1 ether}(address(simple7702account));
+        vm.stopBroadcast();
+        uint256 currentDeposit = entryPoint.balanceOf(address(simple7702account));
         console.log("Current Deposit for Account:", currentDeposit);
     }
 
@@ -318,17 +339,16 @@ contract TestnetInteraction is Script {
 
         vm.startBroadcast(deployerPrivateKey);
 
-        // 添加 deposit（0.1 ETH）
-        paymaster.deposit{value: 0.1 ether}();
-        console.log("Added 0.1 ETH deposit");
+        // // 添加 deposit（0.1 ETH）
+        // paymaster.deposit{value: 0.1 ether}();
+        // console.log("Added 0.1 ETH deposit");
 
         // 如果还没有 stake，添加 stake
         IStakeManager.DepositInfo memory info = entryPoint.getDepositInfo(address(paymaster));
         if (info.stake == 0) {
-            paymaster.addStake{value: 0.1 ether}(86400); // 1 day
-            console.log("Added 0.1 ETH stake with 1 day unlock delay");
+            paymaster.addStake{value: 1 ether}(86400); // 1 day
+            console.log("Added 1 ETH stake with 1 day unlock delay");
         }
-
         vm.stopBroadcast();
 
         console.log("New Deposit:", entryPoint.balanceOf(address(paymaster)));
@@ -337,20 +357,24 @@ contract TestnetInteraction is Script {
 
     /**
      * @notice 配置 Paymaster
+     * @dev forge script script/TestnetInteraction.s.sol:TestnetInteraction --sig "configurePaymaster()" --rpc-url sepolia --broadcast
      */
     function configurePaymaster() public {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
+        uint256 paymasterPrivateKey = vm.envUint("PAYMASTER_PRIVATE_KEY");
 
         console.log("=== Configuring Paymaster ===");
 
         vm.startBroadcast(deployerPrivateKey);
 
-        paymaster.setSignatureRequired(true);
-        console.log("Signature requirement enabled");
+        // paymaster.setVerifyingSigner(vm.addr(paymasterPrivateKey));
 
-        // 设置每笔操作最大gas花费（0.002 ETH）
-        paymaster.setMaxGasCostPerOp(0.002 ether);
-        console.log("Max gas cost per op set to 0.002 ETH");
+        // paymaster.setSignatureRequired(false);
+        // console.log("Signature requirement disabled");
+
+        // // 设置每笔操作最大gas花费（0.02 ETH）
+        // paymaster.setMaxGasCostPerOp(0.02 ether);
+        // console.log("Max gas cost per op set to 0.02 ETH");
 
         // 设置每天最大赞助次数
         paymaster.setMaxSponsorshipPerDay(10);
