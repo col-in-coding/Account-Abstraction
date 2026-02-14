@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
-import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {IEntryPoint} from "@account-abstraction/contracts/interfaces/IEntryPoint.sol";
-import {ISimpleAccountFactory} from "./interfaces/ISimpleAccountFactory.sol";
-import {SimpleAccount} from "./SimpleAccount.sol";
+import "@openzeppelin/contracts/utils/Create2.sol";
+import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+
+import "@account-abstraction/contracts/interfaces/ISenderCreator.sol";
+import "./SimpleAccount.sol";
 
 /**
  * A sample factory contract for SimpleAccount
@@ -13,16 +13,15 @@ import {SimpleAccount} from "./SimpleAccount.sol";
  * The factory's createAccount returns the target account address even if it is already installed.
  * This way, the entryPoint.getSenderAddress() can be called either before or after the account is created.
  */
-contract SimpleAccountFactory is ISimpleAccountFactory {
-    address private immutable ACCOUNT_IMPLEMENTATION;
+contract SimpleAccountFactory {
+    SimpleAccount public immutable accountImplementation;
+    ISenderCreator public immutable senderCreator;
 
-    // Getter function to match interface
-    function accountImplementation() external view override returns (address) {
-        return ACCOUNT_IMPLEMENTATION;
-    }
+    error NotSenderCreator(address msgSender, address entity, address senderCreator);
 
-    constructor(address _entryPoint) {
-        ACCOUNT_IMPLEMENTATION = address(new SimpleAccount(IEntryPoint(_entryPoint)));
+    constructor(IEntryPoint _entryPoint) {
+        accountImplementation = new SimpleAccount(_entryPoint);
+        senderCreator = _entryPoint.senderCreator();
     }
 
     /**
@@ -31,18 +30,20 @@ contract SimpleAccountFactory is ISimpleAccountFactory {
      * Note that during UserOperation execution, this method is called only if the account is not deployed.
      * This method returns an existing account address so that entryPoint.getSenderAddress() would work even after account creation
      */
-    function createAccount(address owner, uint256 salt) public returns (address) {
+    function createAccount(address owner, uint256 salt) public returns (SimpleAccount ret) {
+        require(
+            msg.sender == address(senderCreator), NotSenderCreator(msg.sender, address(this), address(senderCreator))
+        );
         address addr = getAddress(owner, salt);
         uint256 codeSize = addr.code.length;
         if (codeSize > 0) {
-            return addr;
+            return SimpleAccount(payable(addr));
         }
-        SimpleAccount ret = SimpleAccount(
+        ret = SimpleAccount(
             payable(new ERC1967Proxy{salt: bytes32(salt)}(
-                    ACCOUNT_IMPLEMENTATION, abi.encodeCall(SimpleAccount.initialize, (owner))
+                    address(accountImplementation), abi.encodeCall(SimpleAccount.initialize, (owner))
                 ))
         );
-        return address(ret);
     }
 
     /**
@@ -54,7 +55,7 @@ contract SimpleAccountFactory is ISimpleAccountFactory {
             keccak256(
                 abi.encodePacked(
                     type(ERC1967Proxy).creationCode,
-                    abi.encode(ACCOUNT_IMPLEMENTATION, abi.encodeCall(SimpleAccount.initialize, (owner)))
+                    abi.encode(address(accountImplementation), abi.encodeCall(SimpleAccount.initialize, (owner)))
                 )
             )
         );

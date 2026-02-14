@@ -7,8 +7,21 @@ out/
 /broadcast/*/31337/
 /broadcast/**/dry-run/
 
-# Docs
-docs/
-
 # Dotenv file
 .env
+
+*.DS_Store
+node_modules/
+dist/
+.vscode/
+.idea/
+*.logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+coverage/
+*.tsbuildinfo
+
+# Bundler-specific ignores
+bundler/node_modules/

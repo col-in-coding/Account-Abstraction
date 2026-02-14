@@ -3,11 +3,10 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {console} from "forge-std/console.sol";
-import {UserOperation} from "@account-abstraction/contracts/interfaces/UserOperation.sol";
-import {SimpleEIP7702Account} from "../../src/SimpleEIP7702Account.sol";
-import {EntryPointViaNonceManager as EntryPoint} from "../../src/EntryPointViaNonceManager.sol";
-import {IEntryPoint} from "../../src/interfaces/IEntryPoint.sol";
-import {SimplePaymaster} from "../../src/SimplePaymaster.sol";
+import {PackedUserOperation} from "@account-abstraction/contracts/interfaces/PackedUserOperation.sol";
+import {EntryPoint} from "@account-abstraction/contracts/core/EntryPoint.sol";
+import {Simple7702Account} from "src/Simple7702Account.sol";
+import {Paymaster} from "src/Paymaster.sol";
 
 contract EIP7702AccountTest is Test {
     address public officialAdmin = makeAddr("official_admin");
@@ -20,8 +19,8 @@ contract EIP7702AccountTest is Test {
     uint256 public paymasterSignerPrivateKey;
 
     EntryPoint public entryPoint;
-    SimpleEIP7702Account public eip7702delegate;
-    SimplePaymaster public paymaster;
+    Simple7702Account public eip7702delegate;
+    Paymaster public paymaster;
 
     function setUp() public {
         (user, userPrivateKey) = makeAddrAndKey("user");
@@ -34,41 +33,22 @@ contract EIP7702AccountTest is Test {
         entryPoint = new EntryPoint();
 
         vm.startPrank(projectAdmin);
-        eip7702delegate = new SimpleEIP7702Account(IEntryPoint(address(entryPoint)));
+        eip7702delegate = new Simple7702Account(entryPoint);
         console.log("eip7702delegate address:", address(eip7702delegate));
-        paymaster = new SimplePaymaster(address(entryPoint));
+        vm.deal(user, 10 ether);
+        // 模拟 EIP-7702 授权
+        vm.signAndAttachDelegation(address(eip7702delegate), userPrivateKey);
 
+        paymaster = new Paymaster(entryPoint);
         // Stake: 质押资金，有锁定期，用于安全保证
         paymaster.addStake{value: 5 ether}(1 days);
         // Deposit: 存款资金，无锁定期，用于支付 gas 费用
         paymaster.deposit{value: 5 ether}();
         // Paymaster 设置签名者和启用签名验证
-        paymaster.setVerifyingSigner(paymasterSigner);
         paymaster.setSignatureRequired(true);
-        paymaster.setMaxGasCostPerOp(0.01 ether); // 增加 gas 限制
+        paymaster.setVerifyingSigner(paymasterSigner);
+        paymaster.setMaxGasCostPerOp(0.01 ether);
         vm.stopPrank();
-
-        vm.deal(user, 10 ether);
-        // 模拟 EIP-7702 授权
-        vm.signAndAttachDelegation(address(eip7702delegate), userPrivateKey);
-    }
-
-    function test_SetUp_EIP7702Authorization() public view {
-        assertTrue(user.code.length > 0, "user should have code after EIP-7702 authorization");
-        assertEq(user.balance, 10 ether, "user should have 10 ETH");
-
-        bytes memory expectedCode = abi.encodePacked(hex"ef0100", address(eip7702delegate));
-        assertEq(user.code, expectedCode, "user code should be EIP-7702 delegation pointer");
-
-        console.log("EIP-7702 setup successful!");
-    }
-
-    function test_FailCallFromAnotherAccount() public {
-        vm.prank(stranger);
-        vm.expectRevert(
-            abi.encodeWithSignature("NotFromEntryPoint(address,address,address)", stranger, user, address(entryPoint))
-        );
-        SimpleEIP7702Account(payable(user)).execute(makeAddr("recipient"), 1 ether, "");
     }
 
     function test_SucceedSendCallFromOwner() public {
@@ -76,85 +56,124 @@ contract EIP7702AccountTest is Test {
         uint256 initialBalance = recipient.balance;
 
         vm.prank(user);
-        SimpleEIP7702Account(payable(user)).execute(recipient, 1 ether, "");
+        Simple7702Account(payable(user)).execute(recipient, 1 ether, "");
         assertEq(recipient.balance, initialBalance + 1 ether, "recipient should receive 1 ETH");
     }
 
-    function test_SucceedSendCallFromEntryPoint() public {
+    function test_FailCallFromAnotherAccount() public {
+        vm.prank(stranger);
+        vm.expectRevert(
+            abi.encodeWithSignature("NotFromEntryPoint(address,address,address)", stranger, user, address(entryPoint))
+        );
+        Simple7702Account(payable(user)).execute(makeAddr("recipient"), 1 ether, "");
+    }
+
+    function test_SendCallFromEntryPoint() public {
+        require(user.code.length > 0, "Delegate contract should be attached");
+
         uint256 transferAmount = 1 ether;
         address recipient = makeAddr("recipient2");
         uint256 initialBalance = recipient.balance;
-        SimpleEIP7702Account account = SimpleEIP7702Account(payable(user));
+        Simple7702Account account = Simple7702Account(payable(user));
 
         // 充值 EntryPoint 以支付 gas 费用
         vm.prank(user);
-        account.addDeposit{value: transferAmount}();
+        entryPoint.depositTo{value: 0.1 ether}(user);
+        uint256 initEntryPointBalance = entryPoint.balanceOf(user);
+        console.log("EntryPoint balance for user:", initEntryPointBalance);
 
-        // 构建一个简单的转账 UserOperation
-        UserOperation memory userOp = _buildUserOp();
-        uint256 nonce = account.nonce();
+        uint256 nonce = entryPoint.getNonce(user, 0);
         bytes memory callData = abi.encodeWithSignature("execute(address,uint256,bytes)", recipient, transferAmount, "");
+
+        // 构建一个简单的转账 PackedUserOperation
+        PackedUserOperation memory userOp = _buildUserOp();
+        userOp.sender = user;
         userOp.nonce = nonce;
         userOp.callData = callData;
-
         userOp = _signUserOp(userOp);
         _simulateBundlerSubmission(userOp);
 
         assertEq(recipient.balance, initialBalance + transferAmount, "Transfer via EntryPoint should succeed");
+
+        nonce = entryPoint.getNonce(user, 0);
+        assertEq(nonce, 1, "Nonce should increment after operation");
+
+        uint256 entryPointBalance = entryPoint.balanceOf(user);
+        assertLe(entryPointBalance, initEntryPointBalance, "EntryPoint balance should decrease after paying gas");
     }
 
     function test_PaymasterSponsorship() public {
+        require(user.code.length > 0, "Delegate contract should be attached");
+
         uint256 transferAmount = 1 ether;
         address recipient = makeAddr("recipient2");
         uint256 initialBalance = recipient.balance;
-        SimpleEIP7702Account account = SimpleEIP7702Account(payable(user));
+        Simple7702Account account = Simple7702Account(payable(user));
 
-        // 构建一个简单的转账 UserOperation
-        UserOperation memory userOp = _buildUserOp();
-        uint256 nonce = account.nonce();
+        // 充值 EntryPoint，测试 Paymaster 支付 gas 费用
+        vm.prank(user);
+        entryPoint.depositTo{value: 0.1 ether}(user);
+        uint256 initEntryPointBalance = entryPoint.balanceOf(user);
+
+        uint256 nonce = entryPoint.getNonce(user, 0);
         bytes memory callData = abi.encodeWithSignature("execute(address,uint256,bytes)", recipient, transferAmount, "");
-        userOp.nonce = nonce;
-        userOp.callData = callData;
 
         bytes memory paymasterData = _paymasterSignatureData(nonce);
+        // 按照 EntryPoint 规范，补充 16字节 verificationGasLimit 和 16字节 postOpGasLimit
+        uint128 paymasterVerificationGasLimit = 100000;
+        uint128 paymasterPostOpGasLimit = 100000;
+        // paymasterAndData = paymaster(20) || verificationGasLimit(16) || postOpGasLimit(16) || paymasterData
         bytes memory paymasterAndData = abi.encodePacked(
             address(paymaster), // 20 bytes: paymaster address
+            paymasterVerificationGasLimit, // 16 bytes
+            paymasterPostOpGasLimit, // 16 bytes
             paymasterData // paymasterData
         );
-        userOp.paymasterAndData = paymasterAndData;
 
+        // 构建一个简单的转账 PackedUserOperation
+        PackedUserOperation memory userOp = _buildUserOp();
+        userOp.sender = user;
+        userOp.nonce = nonce;
+        userOp.callData = callData;
+        userOp.paymasterAndData = paymasterAndData;
         userOp = _signUserOp(userOp);
         _simulateBundlerSubmission(userOp);
 
         assertEq(recipient.balance, initialBalance + transferAmount, "Transfer via EntryPoint should succeed");
+
+        nonce = entryPoint.getNonce(user, 0);
+        assertEq(nonce, 1, "Nonce should increment after operation");
+
+        uint256 entryPointBalance = entryPoint.balanceOf(user);
+        assertEq(
+            entryPointBalance, initEntryPointBalance, "EntryPoint balance should remain the same as Paymaster pays gas"
+        );
     }
 
-    function _buildUserOp() internal view returns (UserOperation memory) {
-        return UserOperation({
-            sender: user,
+    function _buildUserOp() internal view returns (PackedUserOperation memory) {
+        return PackedUserOperation({
+            sender: address(0),
             nonce: 0,
             initCode: "",
             callData: "",
-            callGasLimit: 100000,
-            verificationGasLimit: 200000,
+            accountGasLimits: _packGasLimits(200000, 100000), // verificationGasLimit, callGasLimit
             preVerificationGas: 50000,
-            maxFeePerGas: 2e9,
-            maxPriorityFeePerGas: 1e9,
+            gasFees: _packGasFees(2e9, 1e9), // maxFeePerGas, maxPriorityFeePerGas
             paymasterAndData: "",
-            signature: ""
+            signature: "" // 稍后填充
         });
     }
 
-    function _signUserOp(UserOperation memory userOp) internal view returns (UserOperation memory) {
+    function _signUserOp(PackedUserOperation memory userOp) internal view returns (PackedUserOperation memory) {
         bytes32 userOpHash = entryPoint.getUserOpHash(userOp);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(userPrivateKey, userOpHash);
         userOp.signature = abi.encodePacked(r, s, v);
         return userOp;
     }
 
-    function _simulateBundlerSubmission(UserOperation memory userOp) internal {
+    function _simulateBundlerSubmission(PackedUserOperation memory userOp) internal {
         // 模拟 Bundler 调用 EntryPoint
-        UserOperation[] memory ops = new UserOperation[](1);
+        PackedUserOperation[] memory ops = new PackedUserOperation[](1);
         ops[0] = userOp;
 
         // 使用 startPrank 来确保 tx.origin 和 msg.sender 都是 bundler (EOA)
@@ -192,5 +211,15 @@ contract EIP7702AccountTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(paymasterSignerPrivateKey, ethSignedMessageHash);
         bytes memory signature = abi.encodePacked(r, s, v);
         paymasterData = abi.encodePacked(payload, signature);
+    }
+
+    // 辅助函数：打包 gas 限制
+    function _packGasLimits(uint128 verificationGasLimit, uint128 callGasLimit) internal pure returns (bytes32) {
+        return bytes32(uint256(verificationGasLimit) << 128 | uint256(callGasLimit));
+    }
+
+    // 辅助函数：打包 gas 费用
+    function _packGasFees(uint128 maxFeePerGas, uint128 maxPriorityFeePerGas) internal pure returns (bytes32) {
+        return bytes32(uint256(maxFeePerGas) << 128 | uint256(maxPriorityFeePerGas));
     }
 }

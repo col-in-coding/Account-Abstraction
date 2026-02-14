@@ -5,39 +5,51 @@ pragma solidity ^0.8.28;
 /* solhint-disable no-inline-assembly */
 /* solhint-disable reason-string */
 
-import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
-import {BaseAccount, IEntryPoint, UserOperation} from "@account-abstraction/contracts/core/BaseAccount.sol";
-import {ISimpleAccount} from "./interfaces/ISimpleAccount.sol";
-
-// v0.7: SIG_VALIDATION constants are in BaseAccount
-uint256 constant SIG_VALIDATION_FAILED = 1;
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
+import "@account-abstraction/contracts/core/BaseAccount.sol";
+import "@account-abstraction/contracts/core/Helpers.sol";
+import "@account-abstraction/contracts/accounts/callback/TokenCallbackHandler.sol";
 
 /**
- * @title SimpleAccount
- * @dev 简单的智能合约账户实现
+ * minimal account.
+ *  this is sample minimal account.
+ *  has execute, eth handling methods
+ *  has a single signer that can send requests through the entryPoint.
  */
-contract SimpleAccount is BaseAccount, UUPSUpgradeable, Initializable, ISimpleAccount {
+contract SimpleAccount is BaseAccount, TokenCallbackHandler, UUPSUpgradeable, Initializable {
     address public owner;
+
     IEntryPoint private immutable ENTRY_POINT;
-    uint256 private _nonce;
+
+    event SimpleAccountInitialized(IEntryPoint indexed entryPoint, address indexed owner);
 
     modifier onlyOwner() {
         _onlyOwner();
         _;
     }
 
+    error NotOwner(address msgSender, address entity, address owner);
+    error NotOwnerOrEntryPoint(address msgSender, address entity, address entryPoint, address owner);
+
+    /// @inheritdoc BaseAccount
+    function entryPoint() public view virtual override returns (IEntryPoint) {
+        return ENTRY_POINT;
+    }
+
+    // solhint-disable-next-line no-empty-blocks
+    receive() external payable {}
+
     constructor(IEntryPoint anEntryPoint) {
         ENTRY_POINT = anEntryPoint;
         _disableInitializers();
     }
 
-    receive() external payable {}
-
-    /// @inheritdoc BaseAccount
-    function nonce() public view virtual override returns (uint256) {
-        return _nonce;
+    function _onlyOwner() internal view {
+        // Directly from EOA owner, or through the account itself (which gets redirected through execute())
+        require(msg.sender == owner || msg.sender == address(this), NotOwner(msg.sender, address(this), owner));
     }
 
     /**
@@ -50,9 +62,38 @@ contract SimpleAccount is BaseAccount, UUPSUpgradeable, Initializable, ISimpleAc
         _initialize(anOwner);
     }
 
-    /// @inheritdoc BaseAccount
-    function entryPoint() public view virtual override(BaseAccount, ISimpleAccount) returns (IEntryPoint) {
-        return ENTRY_POINT;
+    function _initialize(address anOwner) internal virtual {
+        owner = anOwner;
+        emit SimpleAccountInitialized(entryPoint(), owner);
+    }
+
+    // Require the function call went through EntryPoint or owner
+    function _requireForExecute() internal view virtual override {
+        require(
+            msg.sender == address(entryPoint()) || msg.sender == owner,
+            NotOwnerOrEntryPoint(msg.sender, address(this), address(entryPoint()), owner)
+        );
+    }
+
+    /// implement template method of BaseAccount
+    function _validateSignature(PackedUserOperation calldata userOp, bytes32 userOpHash)
+        internal
+        virtual
+        override
+        returns (uint256 validationData)
+    {
+        // UserOpHash can be generated using eth_signTypedData_v4
+        if (owner != ECDSA.recover(userOpHash, userOp.signature)) {
+            return SIG_VALIDATION_FAILED;
+        }
+        return SIG_VALIDATION_SUCCESS;
+    }
+
+    /**
+     * check current account deposit in the entryPoint
+     */
+    function getDeposit() public view virtual returns (uint256) {
+        return entryPoint().balanceOf(address(this));
     }
 
     /**
@@ -69,75 +110,6 @@ contract SimpleAccount is BaseAccount, UUPSUpgradeable, Initializable, ISimpleAc
      */
     function withdrawDepositTo(address payable withdrawAddress, uint256 amount) public virtual onlyOwner {
         entryPoint().withdrawTo(withdrawAddress, amount);
-    }
-
-    /**
-     * execute a transaction (called directly from owner, or by entryPoint)
-     */
-    function execute(address dest, uint256 value, bytes calldata func) external {
-        _requireFromEntryPointOrOwner();
-        _call(dest, value, func);
-    }
-
-    /**
-     * execute a sequence of transactions
-     */
-    function executeBatch(address[] calldata dest, uint256[] calldata value, bytes[] calldata func) external {
-        _requireFromEntryPointOrOwner();
-        require(dest.length == func.length && dest.length == value.length, "wrong array lengths");
-        for (uint256 i = 0; i < dest.length; i++) {
-            _call(dest[i], value[i], func[i]);
-        }
-    }
-
-    /**
-     * check current account deposit in the entryPoint
-     */
-    function getDeposit() public view virtual returns (uint256) {
-        return entryPoint().balanceOf(address(this));
-    }
-
-    function _onlyOwner() internal view {
-        // Directly from EOA owner, or through the account itself (which gets redirected through execute())
-        require(msg.sender == owner || msg.sender == address(this), NotOwner(msg.sender, address(this), owner));
-    }
-
-    function _initialize(address anOwner) internal virtual {
-        owner = anOwner;
-        emit SimpleAccountInitialized(entryPoint(), owner);
-    }
-
-    // Require the function call went through EntryPoint or owner
-    function _requireFromEntryPointOrOwner() internal view {
-        require(msg.sender == address(entryPoint()) || msg.sender == owner, "account: not Owner or EntryPoint");
-    }
-
-    /// implement template method of BaseAccount
-    function _validateAndUpdateNonce(UserOperation calldata userOp) internal virtual override {
-        require(_nonce++ == userOp.nonce, "account: invalid nonce");
-    }
-
-    /// implement template method of BaseAccount
-    function _validateSignature(UserOperation calldata userOp, bytes32 userOpHash)
-        internal
-        virtual
-        override
-        returns (uint256 validationData)
-    {
-        // UserOpHash can be generated using eth_signTypedData_v4
-        if (owner != ECDSA.recover(userOpHash, userOp.signature)) {
-            return SIG_VALIDATION_FAILED;
-        }
-        return 0; // SIG_VALIDATION_SUCCESS = 0
-    }
-
-    function _call(address target, uint256 value, bytes memory data) internal {
-        (bool success, bytes memory result) = target.call{value: value}(data);
-        if (!success) {
-            assembly {
-                revert(add(result, 32), mload(result))
-            }
-        }
     }
 
     function _authorizeUpgrade(address newImplementation) internal view override {
