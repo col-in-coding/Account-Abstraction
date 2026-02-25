@@ -154,8 +154,7 @@ contract Paymaster is BasePaymaster {
         // 提取签名（最后65个字节）
         bytes memory signature = paymasterData[45:110];
 
-        // 验证时间窗口（使用 paymasterData 中提供的时间，而不是 block.timestamp）
-        // 注意：这里不能使用 block.timestamp，因为在验证阶段是被禁止的
+        // 注意：这里不能使用 block.timestamp，因为在验证阶段是被禁止的（Bundler 会离线模拟调用验证函数）
         // 时间验证将依赖于 paymasterData 中的 validUntil 和 validAfter
         // EntryPoint 会在执行时自动验证这些时间范围
 

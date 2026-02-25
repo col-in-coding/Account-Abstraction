@@ -8,6 +8,8 @@ import {
   getAddress
 } from 'viem';
 
+import { CONTRACTS } from './constants';
+
 export interface PaymasterDataInput {
   validUntil: number;      // uint48 - signature valid until timestamp
   validAfter: number;      // uint48 - signature valid after timestamp
@@ -26,7 +28,6 @@ export interface PaymasterDataInput {
 // ============================================================================
 // OPTION 2: Use Your Own Custom Paymaster
 // ============================================================================
-export const PAYMASTER_ADDRESS = "0x9B7CD9ad5D5B314199dD17d0854d0f8002c46314" as const;
 export const PAYMASTER_VERIFICATION_GAS_LIMIT = 50000n;
 export const PAYMASTER_POST_OP_GAS_LIMIT = 50000n;
 
@@ -83,7 +84,7 @@ export function buildPaymasterAndData(
 
   // Format: paymaster(20) + verificationGasLimit(16) + postOpGasLimit(16) + paymasterData + signature
   // Each gas limit is uint128 (16 bytes = 32 hex chars)
-  return `${PAYMASTER_ADDRESS}${verificationGasLimit.toString(16).padStart(32, '0')}${postOpGasLimit.toString(16).padStart(32, '0')}${paymasterDataEncoded.slice(2)}${signature.slice(2)}` as `0x${string}`;
+  return `${CONTRACTS.PAYMASTER}${verificationGasLimit.toString(16).padStart(32, '0')}${postOpGasLimit.toString(16).padStart(32, '0')}${paymasterDataEncoded.slice(2)}${signature.slice(2)}` as `0x${string}`;
 }
 
 export async function generatePaymasterAndData(
@@ -104,7 +105,7 @@ export async function generatePaymasterAndData(
       ['address', 'address', 'address', 'uint256', 'uint48', 'uint48', 'bytes'],
       [
         entryPointAddress,
-        PAYMASTER_ADDRESS,
+        CONTRACTS.PAYMASTER,
         userAddress,
         userNonce,
         paymasterDataInput.validUntil,
@@ -114,17 +115,19 @@ export async function generatePaymasterAndData(
     )
   );
 
-  // bytes32 ethSignedMessageHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", dataHash));
-  const ethSignedMsgHash = keccak256(
-    encodePacked(
-      ['string', 'bytes32'],
-      ["\x19Ethereum Signed Message:\n32", dataHash]
-    )
-  );
+  console.log("Debug - Data Hash:", dataHash);
+  console.log("Debug - EntryPoint:", entryPointAddress);
+  console.log("Debug - Paymaster:", CONTRACTS.PAYMASTER);
+  console.log("Debug - User Address:", userAddress);
+  console.log("Debug - User Nonce:", userNonce.toString());
+  console.log("Debug - Valid Until:", paymasterDataInput.validUntil);
+  console.log("Debug - Valid After:", paymasterDataInput.validAfter);
+  console.log("Debug - Paymaster Data Encoded:", paymasterDataEncoded);
 
-  // Sign the message
+  // ✅ FIX: signMessage already adds Ethereum prefix, so sign the raw dataHash
+  // viem's signMessage will automatically add "\x19Ethereum Signed Message:\n32" prefix
   const signature = await paymasterAccount.signMessage({
-    message: { raw: ethSignedMsgHash },
+    message: { raw: dataHash }, // Sign the raw dataHash, viem adds prefix automatically
   });
 
   console.log("Generated Signature:", signature);

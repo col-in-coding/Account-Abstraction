@@ -1,11 +1,11 @@
 /**
  * UserOperation preparation and sending with Custom Paymaster
  */
-import { prepareUserOperation, sendUserOperation, getUserOperationHash } from 'viem/account-abstraction'
+import { prepareUserOperation, getUserOperationHash } from 'viem/account-abstraction'
 import { parseUnits, type SignAuthorizationReturnType, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { generatePaymasterAndData } from './paymaster'
-import { PAYMASTER_ADDRESS, PAYMASTER_VERIFICATION_GAS_LIMIT, PAYMASTER_POST_OP_GAS_LIMIT } from './paymaster'
+import { PAYMASTER_VERIFICATION_GAS_LIMIT, PAYMASTER_POST_OP_GAS_LIMIT } from './paymaster'
 import { CONTRACTS, env } from './constants'
 
 export interface UserOperationConfig {
@@ -25,7 +25,7 @@ export interface UserOperationWithSignature {
 /**
  * Complete workflow: prepare, sign with custom paymaster, and send UserOperation
  */
-export async function executeUserOperation(
+export async function prepareAndSignUserOperation(
     client: any,
     config: UserOperationConfig,
     smartAccount: any,
@@ -161,9 +161,5 @@ export async function executeUserOperation(
     console.log('signature:', signedUserOp.signature)
     console.log('=========================================================\n')
 
-    // Step 7: Send to Entry Point using viem's native sendUserOperation
-    userOpHash = await sendUserOperation(client, signedUserOp)
-    console.log('✓ UserOperation sent with hash:', userOpHash)
-
-    return userOpHash
+    return signedUserOp
 }

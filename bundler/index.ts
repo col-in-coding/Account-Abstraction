@@ -1,7 +1,8 @@
+import { sendUserOperation } from 'viem/account-abstraction'
 import { sepoliaClientV08 } from './modules/client'
 import { initializeAccounts, createSmartAccount } from './modules/account'
 import { checkAndSignAuthorization } from './modules/authorization'
-import { executeUserOperation } from './modules/userOperation'
+import { prepareAndSignUserOperation } from './modules/userOperation'
 import { CONTRACTS, DEFAULT_USER_OP_CONFIG, env } from './modules/constants'
 
 async function main() {
@@ -35,7 +36,7 @@ async function main() {
 
         // Step 4: prepare UserOperation
         console.log('💳 Step 4: Preparing UserOperation...')
-        const userOpHash = await executeUserOperation(
+        const signedUserOp = await prepareAndSignUserOperation(
             sepoliaClientV08,
             {
                 recipient: recipient.address,
@@ -46,8 +47,61 @@ async function main() {
             authResult.authorization
         )
 
-        console.log('=== Transaction Completed Successfully ===')
-        console.log(`UserOp Hash: ${userOpHash}`)
+        // Step 5: Send UserOperation to bundler
+        console.log('📤 Step 5: Sending UserOperation to bundler...')
+        console.log('  Using bundler URL:', sepoliaClientV08.transport.url || 'default')
+
+        try {
+            const userOpHash = await sendUserOperation(sepoliaClientV08, signedUserOp)
+            console.log('✓ UserOperation sent to bundler successfully')
+            console.log('\n=== UserOperation Submitted ===')
+            console.log(`UserOp Hash: ${userOpHash}`)
+
+            // Wait for transaction receipt
+            console.log('\n⏳ Waiting for bundler to process the UserOperation...')
+            console.log('   (This may take 10-30 seconds)')
+
+            // Poll for receipt
+            let receipt = null
+            let attempts = 0
+            const maxAttempts = 30
+
+            while (attempts < maxAttempts) {
+                try {
+                    receipt = await sepoliaClientV08.request({
+                        method: 'eth_getUserOperationReceipt' as any,
+                        params: [userOpHash],
+                    })
+
+                    if (receipt) {
+                        break
+                    }
+                } catch (error) {
+                    // Receipt not found yet, continue polling
+                }
+
+                await new Promise(resolve => setTimeout(resolve, 2000)) // Wait 2 seconds
+                attempts++
+                process.stdout.write('.')
+            }
+
+            console.log('\n')
+
+            if (receipt) {
+                console.log('✅ Transaction mined successfully!')
+                console.log(`Transaction Hash: ${(receipt as any).receipt?.transactionHash}`)
+                console.log(`Block Number: ${(receipt as any).receipt?.blockNumber}`)
+                console.log(`Gas Used: ${(receipt as any).actualGasUsed}`)
+                console.log(`\nView on Etherscan: https://sepolia.etherscan.io/tx/${(receipt as any).receipt?.transactionHash}`)
+            } else {
+                console.log('⚠️  Timeout waiting for transaction receipt')
+                console.log('   Your UserOperation may still be processed.')
+                console.log(`   Check status later with UserOp Hash: ${userOpHash}`)
+            }
+        } catch (sendError) {
+            console.error('❌ Failed to send UserOperation:', sendError)
+            throw sendError
+        }
     } catch (error) {
         console.error('❌ Error:', error)
         process.exit(1)
